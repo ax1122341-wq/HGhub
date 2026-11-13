@@ -1,0 +1,10 @@
+[
+  {
+    "id": "sample-1",
+    "title": "示例视频（请替换）",
+    "category": "示例分类",
+    "description": "将 video.mp4 替换为你拥有或获准使用的视频文件。",
+    "thumbnail": "",
+    "src": "/videos/video.mp4"
+  }
+]
