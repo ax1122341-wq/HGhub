@@ -1,0 +1,76 @@
+name: Aseprite Windows x64 build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - aseprite-cloud-build
+    paths:
+      - ".github/workflows/aseprite-windows.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - name: Check out Aseprite source and submodules
+        uses: actions/checkout@v4
+        with:
+          repository: aseprite/aseprite
+          ref: v1.3.18.6
+          submodules: recursive
+          path: aseprite
+
+      - name: Set up Visual Studio 2022 x64 compiler
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Set up CMake
+        uses: lukka/get-cmake@latest
+
+      - name: Install Ninja
+        shell: pwsh
+        run: |
+          if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
+            choco install ninja --yes --no-progress
+          }
+          ninja --version
+
+      - name: Download matching Skia m124
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $url = "https://github.com/aseprite/skia/releases/download/m124-08a5439a6b/Skia-Windows-Release-x64.zip"
+          $zip = Join-Path $env:RUNNER_TEMP "skia-m124-win-x64.zip"
+          $dest = "C:\deps\skia"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Invoke-WebRequest -Uri $url -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath $dest -Force
+          if (-not (Test-Path "$dest\out\Release-x64\skia.lib")) {
+            Get-ChildItem $dest -Force
+            throw "Expected Skia library was not found at $dest\out\Release-x64\skia.lib"
+          }
+
+      - name: Configure Aseprite
+        shell: pwsh
+        working-directory: aseprite
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLAF_BACKEND=skia -DSKIA_DIR=C:\deps\skia -DSKIA_LIBRARY_DIR=C:\deps\skia\out\Release-x64 -DSKIA_LIBRARY=C:\deps\skia\out\Release-x64\skia.lib
+
+      - name: Build Aseprite
+        shell: pwsh
+        working-directory: aseprite
+        run: ninja -C build aseprite
+
+      - name: Verify executable (not published)
+        shell: pwsh
+        working-directory: aseprite
+        run: |
+          $exe = "build\bin\aseprite.exe"
+          if (-not (Test-Path $exe)) { throw "Build finished without the expected executable." }
+          Get-Item $exe | Select-Object FullName, Length
+          Write-Host "Build verification succeeded. The executable remains on the temporary runner and is not uploaded or distributed."
